@@ -1,0 +1,2 @@
+C:\Users\Romain\Documents\Unity\Hypnose AR V1\Apps\ClientBuilds\hololens\v1\GeneratedProjects\UWP\Assembly-CSharp\Assembly-CSharp.csproj;x86
+C:\Users\Romain\Documents\Unity\Hypnose AR V1\Apps\ClientBuilds\hololens\v1\Hypnose AR V1\Hypnose AR V1.csproj;x86
