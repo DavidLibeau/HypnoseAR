@@ -1,0 +1,2 @@
+C:\Users\Romain\Documents\Unity\HypnoseARV3\Apps\V1\GeneratedProjects\UWP\Assembly-CSharp\Assembly-CSharp.csproj;x86
+C:\Users\Romain\Documents\Unity\HypnoseARV3\Apps\V1\HypnoseARV3\HypnoseARV3.csproj;x86

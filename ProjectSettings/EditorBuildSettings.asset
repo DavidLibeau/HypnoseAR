@@ -5,9 +5,6 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 0
-    path: Assets/Scene/client.unity
-    guid: 3f78a7904f522f84f9179caf245baf38
   - enabled: 1
-    path: Assets/Scene/server.unity
-    guid: 8c5f239d718088f48be55ffdb1468a36
+    path: Assets/holoLensScene.unity
+    guid: 04db07ba38104ff4ebf84e3b0969dd42
