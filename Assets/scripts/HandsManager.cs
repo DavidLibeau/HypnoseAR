@@ -2,8 +2,8 @@
 using UnityEngine.UI;
 using UnityEngine.XR.WSA.Input;
 
-namespace HoloToolkit.Unity
-{
+//namespace HoloToolkit.Unity
+//{
     /// <summary>
     /// HandsManager keeps track of the focused object when a hand is detected.
     /// </summary>
@@ -45,15 +45,22 @@ namespace HoloToolkit.Unity
 
         private void Update()
         {
-            if (HandDetected)
+            if (testIndicator != null)
             {
-                testIndicator.text = "Hands detected";
-            }
-            else
-            {
-                testIndicator.text = "Nothing";
+                if (HandDetected)
+                {
+                    testIndicator.text = "Hands detected";
+                }
+                else
+                {
+                    testIndicator.text = "Nothing";
+                }
             }
             FocusedGameObject = GazePointer.Instance.Target;
+            if(FocusedGameObject != null)
+            {
+                Debug.Log(FocusedGameObject);
+            }
             UpdateFocusOutline();
         }
 
@@ -78,7 +85,7 @@ namespace HoloToolkit.Unity
         private void InteractionManager_InteractionSourceDetected(InteractionSourceDetectedEventArgs obj)
         {
             HandDetected = true;
-            Debug.Log("Source detected");
+            //Debug.Log("Source detected");
         }
 
         private void InteractionManager_InteractionSourceLost(InteractionSourceLostEventArgs obj)
@@ -90,8 +97,7 @@ namespace HoloToolkit.Unity
             }
             FocusedGameObject = null;
             SelectedGameOjbect = null;
-            //UpdateFocusOutline();
-            Debug.Log("Source lost");
+            //Debug.Log("Source lost");
         }
 
         private void InteractionManager_InteractionSourcePressed(InteractionSourcePressedEventArgs hand)
@@ -103,10 +109,11 @@ namespace HoloToolkit.Unity
                     audioSource.Play();
                 }
                 FocusedGameObject = GazePointer.Instance.Target;
+                Debug.Log(FocusedGameObject);
                 SelectedGameOjbect = FocusedGameObject;
                 SelectedGameOjbect.SendMessage("OnSelect", SendMessageOptions.DontRequireReceiver);
             }
-            Debug.Log("Source pressed");
+           // Debug.Log("Source pressed");
         }
 
         private void InteractionManager_InteractionSourceReleased(InteractionSourceReleasedEventArgs hand)
@@ -116,8 +123,7 @@ namespace HoloToolkit.Unity
                 SelectedGameOjbect.SendMessage("OnDeselect", SendMessageOptions.DontRequireReceiver);
             }
             SelectedGameOjbect = null;
-            //FocusedGameObject = null;
-            Debug.Log("Source released");
+          //  Debug.Log("Source released");
         }
 
         public void UpdateFocusOutline()
@@ -145,4 +151,4 @@ namespace HoloToolkit.Unity
             InteractionManager.InteractionSourcePressed -= InteractionManager_InteractionSourcePressed;
         }
     }
-}
+//}

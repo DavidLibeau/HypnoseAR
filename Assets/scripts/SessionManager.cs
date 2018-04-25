@@ -12,6 +12,10 @@ using System.IO;
 //using System.Xml;
 // outline
 using cakeslice;
+using System.Threading;
+using System.Threading.Tasks;
+using UnityEngine.SceneManagement;
+using System.Diagnostics;
 
 public class HoloObject
 {
@@ -19,6 +23,7 @@ public class HoloObject
     private int selfId;
     private string sceneId;
     private string prefabType;
+    public float rotRate = 0.5f;// rotation rate of objects;
 
     public GameObject Obj
     {
@@ -75,7 +80,14 @@ public class HoloObject
         sceneId = desc.SceneId;
         prefabType = "undefined"; // to be changed
         //obj = GameObject.CreatePrimitive(PrimitiveType.Cube); // to be changed
-        obj = CreateObjectWithPrefab(desc.SelfId);
+        //obj = LibraryManager.Instance.CreateObjectWithPrefab(desc.SelfId);
+        string fileInfoName = desc.SelfId + ".xml";
+        //obj = LibraryManager.Instance.CreateObjectAsync(fileInfoName).Result;
+        Task<GameObject> objectTask = LibraryManager.Instance.CreateObjectAsync(fileInfoName);
+        UnityEngine.Debug.Log("objectTask status : " + objectTask.Status);
+        objectTask.Wait();
+        obj = objectTask.Result;
+        //obj = LibraryManager.Instance.CreateObjectAsync(fileInfoName);
         obj.transform.position = desc.Position;
         obj.transform.rotation = desc.Rotation;
         obj.transform.localScale = desc.Scale;
@@ -85,29 +97,55 @@ public class HoloObject
         obj.AddComponent<Outline>();
         obj.AddComponent<ObjectManager>();
         obj.GetComponent<ObjectManager>().interactible = desc.Interactible;
+        if (desc.Interactible)
+        {
+            obj.AddComponent<MeshCollider>();
+            //obj.GetComponent<MeshCollider>().m
+        }
+
+        obj.GetComponent<ObjectManager>().rotationVect = RandomVector();
+
+        this.DealWithOtherParameters(desc);
+
         obj.SendMessage("OnDisable", SendMessageOptions.DontRequireReceiver);
-        this.DealWithOtherParameters(desc.OtherContent);
-    }
-
-    public GameObject CreateObjectWithPrefab(int prefabId)
-    {
-        //GameObject newObject = Resources.Load(SessionManager.Instance.LocalPath + prefabId + ".prefab") as GameObject;
-        Debug.Log("prefabId : " + prefabId);
-
-        // to be changed
-        GameObject model = Resources.Load<GameObject>("HoloLibrary/Prefab/" + prefabId);
-        //Debug.Log(model);
         
-        GameObject newObject = MonoBehaviour.Instantiate(model);
-        //GameObject newObject = (GameObject)AssetBundle.LoadAsset("library/Prefab/" + prefabId + ".prefab", typeof(Ga));
-        Debug.Log("newOjbect is null ? " + newObject.ToString());
-        return newObject;
     }
 
-
-    public void DealWithOtherParameters(XElement otherContent)
+    public Texture2D ColorToTexture2D(Color color)
     {
-        // to be completed
+        Texture2D tex = new Texture2D(1, 1);
+        Color[] colArray = new Color[1];
+        colArray[0] = color;
+        tex.SetPixels(colArray);
+        return tex;
+    }
+
+    public Vector3 RandomVector()
+    {
+        float x, y, z;
+        x = UnityEngine.Random.Range(-rotRate, rotRate);
+        y = UnityEngine.Random.Range(-rotRate, rotRate);
+        z = UnityEngine.Random.Range(-rotRate, rotRate);
+        return new Vector3(x, y, z);
+    }
+
+    public void DealWithOtherParameters(HoloObjectDescription desc)
+    {
+        // shader/material modifications
+        if(desc.DefCtrl == null)
+        {
+            return;
+        }
+        obj.GetComponent<Renderer>().material = SessionManager.Instance.paramShaderMaterial;
+        obj.GetComponent<Renderer>().material.SetTexture("_MainTex", ColorToTexture2D(desc.DefCtrl.color0));
+        obj.GetComponent<Renderer>().material.SetTexture("_SecTex", ColorToTexture2D(desc.DefCtrl.color1));
+        obj.GetComponent<Renderer>().material.SetFloat("_Dist", desc.DefCtrl.amplitude);
+        obj.GetComponent<Renderer>().material.SetFloat("_Speed", desc.DefCtrl.waveVelocity);
+        obj.GetComponent<Renderer>().material.SetFloat("_WNb", desc.DefCtrl.waveNumber);
+        obj.GetComponent<Renderer>().material.SetFloat("_TransPercent", desc.DefCtrl.transition);
+        obj.GetComponent<Renderer>().material.SetFloat("_AmbLight", desc.DefCtrl.ambientLight);
+        obj.GetComponent<Renderer>().material.SetFloat("_DiffLight", desc.DefCtrl.diffuseLight);
+        obj.GetComponent<Renderer>().material.SetFloat("_SpecLight", desc.DefCtrl.specularLight);
     }
 
     public HoloObject(int id, string sceneId, string prefabType, GameObject obj)
@@ -130,7 +168,7 @@ public class HoloObject
     {
         // returning its id, prefab, position
         String output;
-        output = "[OBJ|" + selfId + "|" + prefabType + "|" + SerializePosition() + "]";
+        output = "[OBJ|" + selfId + "|" + "|" + SerializePosition() + "]";
         return output;
     }
 
@@ -154,6 +192,7 @@ public class HoloObjectDescription
     private Vector3 position;
     private Quaternion rotation;
     private Vector3 scale;
+    private DeformableController defCtrl;
     private XElement otherContent; // to be parsed upon creation of the holoObject
 
     public int SelfId
@@ -241,6 +280,19 @@ public class HoloObjectDescription
         }
     }
 
+    public DeformableController DefCtrl
+    {
+        get
+        {
+            return defCtrl;
+        }
+
+        set
+        {
+            defCtrl = value;
+        }
+    }
+
     override
     public string ToString()
     {
@@ -316,25 +368,63 @@ public class Seance
     }
 }
 
+public class DeformableController
+{
+    public Color color0;
+    public Color color1;
+    public float amplitude;
+    public float waveVelocity;
+    public float waveNumber;
+    public float transition;
+    public float ambientLight;
+    public float diffuseLight;
+    public float specularLight;
+
+    public DeformableController(Color col0, Color col1, float amplitude, float waveVelocity, float waveNumber, float transition, float ambientLight, float diffuseLight, float specularLight)
+    {
+        this.color0 = col0;
+        this.color1 = col1;
+        this.amplitude = amplitude;
+        this.waveVelocity = waveVelocity;
+        this.waveNumber = waveNumber;
+        this.transition = transition;
+        this.ambientLight = ambientLight;
+        this.diffuseLight = diffuseLight;
+        this.specularLight = specularLight;
+    }
+
+    override
+    public string ToString()
+    {
+        return "DeformableController : " + color0 + "/" + color1 + "/" + amplitude + "/" + waveVelocity + "/" + waveNumber + "/" + transition + "/" + ambientLight + "/" + diffuseLight + "/" + specularLight;
+    }
+
+}
+
 public class SessionManager : MonoBehaviour
 {
 
     public static SessionManager Instance;
-
     // miror structure reflecting the current scene
     public Seance currentSeance;
 
     // parent object containing the instanciated objects in the scene
     public GameObject parent;
 
+    public Mutex modificationPending = new Mutex(); // locks the access if a thread/async function already modifying the scene
     private List<HoloObject> activeObjects;
     private string localPath;
-    private int nextId = 0;
     bool newSessionStatus; // true if pending / false else
     DateTime orig = new DateTime(1970, 1, 1, 0, 0, 0);
+    public Material paramShaderMaterial;
 
     // modified object
     public List<HoloObjectDescription> changedObjects;
+
+    //defual values
+    public Vector3 defaultPos;
+    public Quaternion defaultRot;
+
 
     public string LocalPath
     {
@@ -353,7 +443,11 @@ public class SessionManager : MonoBehaviour
     void Start()
     {
         Instance = this;
-        LocalPath = ""; // path where library is stored on the hololens
+#if WINDOWS_UWP
+        localPath = ""; // path where library is stored on the hololens
+#else
+        localPath = "HoloLibrary/";
+#endif
         activeObjects = new List<HoloObject>();
         changedObjects = new List<HoloObjectDescription>();
         currentSeance = new Seance
@@ -361,59 +455,86 @@ public class SessionManager : MonoBehaviour
             ActiveObjects = new List<HoloObjectDescription>()
         };
         parent = GameObject.Find("SceneObj");
+        // deformation material
+        //DirContent(Application.dataPath +"/Resources/"+ localPath);
+        Material[] materials = Resources.LoadAll<Material>(LocalPath + "paramDef").ToArray();
+        foreach(Material mat in materials)
+        {
+            UnityEngine.Debug.Log(mat);
+        }
+        paramShaderMaterial = Resources.Load<Material>(localPath + "paramDef/YParamDef");
+
+        defaultPos = new Vector3(0, 0, 5);
+        defaultRot = UnityEngine.Random.rotation;
+    }
+
+    public static void DirContent(string path)
+    {
+        var info = new DirectoryInfo(path);
+        var fileInfo = info.GetFiles();
+        foreach (FileInfo file in fileInfo)
+        {
+            UnityEngine.Debug.Log(file);
+        }
     }
 
     private void Update()
     {
-        OnObjectChange(); // try to see if this could be called from the Gesture Manager update function
+        if (!MainPanel.Instance.isSafePlace)
+        {
+            OnObjectChange(); // try to see if this could be called from the Gesture Manager update function
+        }
     }
+
+
     // Converts the XML to a new scene decription
     public void ParseXML(string getContent)
     {
         if (!getContent.Equals(""))
         {
             // Creating equivalent representation of the scene
-            //XmlDocument seanceXml = new XmlDocument();
-            Debug.Log(getContent);
+            UnityEngine.Debug.Log(getContent);
             XDocument seanceXml = XDocument.Parse(getContent);
-            //seanceXml.LoadXml(getContent);
-            //Debug.Log(getContent);
-
+            
             // id
-            //currentSeance.SeanceId = seanceXml.SelectSingleNode("seance/id").InnerText;
             string newSeanceId = seanceXml.Descendants("id").First<XElement>().Value;
             if(currentSeance.SeanceId != null && currentSeance.SeanceId != newSeanceId)
             {
-                Debug.Log("Seance Id changed !! Previous " + currentSeance.SeanceId + " // New : " + newSeanceId);
+                UnityEngine.Debug.Log("Seance Id changed !! Previous " + currentSeance.SeanceId + " // New : " + newSeanceId);
             }
             currentSeance.SeanceId = newSeanceId;
 
             // create_date
             double secs;
-            //double.TryParse(seanceXml.SelectSingleNode("seance/date_create").InnerText, out secs);
             double.TryParse(seanceXml.Descendants("date_create").First<XElement>().Value, out secs);
             currentSeance.SeanceCreationDate = orig.AddSeconds(secs);
 
+            // safe place mode?
+            if (SceneSwicth(seanceXml))
+            {
+                return;
+            }
+            
             // creating holoobjevctsdescription
-            //XmlNodeList objects = seanceXml.SelectNodes("seance/scene/object");
             IEnumerable<XElement> objects = seanceXml.Descendants("object");
+            //locking access via mutex
+            modificationPending.WaitOne();
             // reset
             currentSeance.ActiveObjects = new List<HoloObjectDescription>();
             // populate
             foreach (XElement node in objects)
-            //for (uint i= 0; i<objects.Length; i++)
             {
                 AddHoloObjectDescription(node);
-                //Debug.Log(node.ToString());
             }
-            Debug.Log(currentSeance.ToString());
+            UnityEngine.Debug.Log(currentSeance.ToString());
             ModifyScene();
+            //unlocking access
+            modificationPending.ReleaseMutex();
 
             // pending
             // to be implemented
 
             //fading ui
-            //bool.TryParse(seanceXml.SelectSingleNode("seance").Attributes.GetNamedItem("isStarted").InnerText,out newSessionStatus);
             bool.TryParse(seanceXml.Element("seance").Attribute("isStarted").Value, out newSessionStatus);
             if (MainPanel.Instance.sessionPending != newSessionStatus && newSessionStatus == true) // beginning session
             {
@@ -431,43 +552,45 @@ public class SessionManager : MonoBehaviour
     {
         //Debug.Log(node.Value);
         int sfid;
-        //int.TryParse(node.SelectSingleNode("selfId").InnerText, out sfid);
         int.TryParse(node.Element("selfId").Value, out sfid);
 
         // Fields that might not exist
-        Vector3 rand = new Vector3(UnityEngine.Random.Range(-5, 5), UnityEngine.Random.Range(-5, 5), UnityEngine.Random.Range(2, 5));
         // position
-        Vector3 pos = rand;
-        //IXmlNode posNode = node.SelectSingleNode("position");
+        Vector3 pos = defaultPos;
         XElement posNode = node.Element("position");
         if (posNode != null)
         {
             float x, y, z;
-            //float.TryParse(posNode.SelectSingleNode("x").InnerText, out x);
-            //float.TryParse(posNode.SelectSingleNode("y").InnerText, out y);
-            //float.TryParse(posNode.SelectSingleNode("z").InnerText, out z);
-            float.TryParse(posNode.Element("x").Value, out x);
-            float.TryParse(posNode.Element("y").Value, out y);
-            float.TryParse(posNode.Element("z").Value, out z);
+#if WINDOWS_UWP
+            float.TryParse(posNode.Element("x").Value , out x);
+            float.TryParse(posNode.Element("y").Value , out y);
+            float.TryParse(posNode.Element("z").Value , out z);
+#else
+            float.TryParse(posNode.Element("x").Value.Replace(".", ","), out x);
+            float.TryParse(posNode.Element("y").Value.Replace(".", ","), out y);
+            float.TryParse(posNode.Element("z").Value.Replace(".", ","), out z);
+#endif
             pos.x = x;
             pos.y = y;
             pos.z = z;
         }
         //rotation
-        Quaternion rot = UnityEngine.Random.rotation;
-        //IXmlNode rotNode = node.SelectSingleNode("rotation");
+        Quaternion rot = defaultRot;
         XElement rotNode = node.Element("rotation");
         if (rotNode != null)
         {
             float x, y, z, w;
-            //float.TryParse(posNode.SelectSingleNode("x").InnerText, out x);
-            //float.TryParse(posNode.SelectSingleNode("y").InnerText, out y);
-            //float.TryParse(posNode.SelectSingleNode("z").InnerText, out z);
-            //float.TryParse(posNode.SelectSingleNode("w").InnerText, out w);
-            float.TryParse(posNode.Element("x").Value, out x);
-            float.TryParse(posNode.Element("y").Value, out y);
-            float.TryParse(posNode.Element("z").Value, out z);
-            float.TryParse(posNode.Element("w").Value, out w);
+#if WINDOWS_UWP
+            float.TryParse(rotNode.Element("x").Value , out x);
+            float.TryParse(rotNode.Element("y").Value , out y);
+            float.TryParse(rotNode.Element("z").Value , out z);
+            float.TryParse(rotNode.Element("w").Value , out w);
+#else
+            float.TryParse(rotNode.Element("x").Value.Replace(".", ","), out x);
+            float.TryParse(rotNode.Element("y").Value.Replace(".", ","), out y);
+            float.TryParse(rotNode.Element("z").Value.Replace(".", ","), out z);
+            float.TryParse(rotNode.Element("w").Value.Replace(".", ","), out w);
+#endif
             rot.x = x;
             rot.y = y;
             rot.z = z;
@@ -475,21 +598,25 @@ public class SessionManager : MonoBehaviour
         }
         // scale
         Vector3 scale = Vector3.one;
-        //IXmlNode sclNode = node.SelectSingleNode("scale");
         XElement sclNode = node.Element("scale");
         if (sclNode != null)
         {
             float x, y, z;
-            //float.TryParse(posNode.SelectSingleNode("x").InnerText, out x);
-            //float.TryParse(posNode.SelectSingleNode("y").InnerText, out y);
-            //float.TryParse(posNode.SelectSingleNode("z").InnerText, out z);
-            float.TryParse(posNode.Element("x").Value, out x);
-            float.TryParse(posNode.Element("y").Value, out y);
-            float.TryParse(posNode.Element("z").Value, out z);
+#if WINDOWS_UWP
+            float.TryParse(sclNode.Element("x").Value , out x);
+            float.TryParse(sclNode.Element("y").Value , out y);
+            float.TryParse(sclNode.Element("z").Value , out z);
+#else
+            float.TryParse(sclNode.Element("x").Value.Replace(".", ","), out x);
+            float.TryParse(sclNode.Element("y").Value.Replace(".", ","), out y);
+            float.TryParse(sclNode.Element("z").Value.Replace(".", ","), out z);
+#endif
             scale.x = x;
             scale.y = y;
             scale.z = z;
         }
+
+        // interactible
         bool interactible = true; // default value
         XElement itrNode = node.Element("interactible");
         if(itrNode != null)
@@ -497,15 +624,79 @@ public class SessionManager : MonoBehaviour
             bool.TryParse(itrNode.Value, out interactible);
         }
 
+        // deformable
+        XElement defNode = node.Element("deformable");
+        DeformableController defCtrl;
+        if (defNode != null)
+        {
+            // colors
+            XElement col0Node = defNode.Element("color0");
+            XElement col1Node = defNode.Element("color1");
+            Color col0 = Color.black; // default
+            Color col1 = Color.white; // default
+#if WINDOWS_UWP
+            float.TryParse(col0Node.Element("r").Value , out col0.r);
+            float.TryParse(col0Node.Element("g").Value , out col0.g);
+            float.TryParse(col0Node.Element("b").Value , out col0.b);
+            float.TryParse(col0Node.Element("a").Value , out col0.a);
+            float.TryParse(col1Node.Element("r").Value , out col1.r);
+            float.TryParse(col1Node.Element("g").Value , out col1.g);
+            float.TryParse(col1Node.Element("b").Value , out col1.b);
+            float.TryParse(col1Node.Element("a").Value , out col1.a);
+#else
+            float.TryParse(col0Node.Element("r").Value.Replace(".", ","), out col0.r);
+            float.TryParse(col0Node.Element("g").Value.Replace(".", ","), out col0.g);
+            float.TryParse(col0Node.Element("b").Value.Replace(".", ","), out col0.b);
+            float.TryParse(col0Node.Element("a").Value.Replace(".", ","), out col0.a);
+            float.TryParse(col1Node.Element("r").Value.Replace(".", ","), out col1.r);
+            float.TryParse(col1Node.Element("g").Value.Replace(".", ","), out col1.g);
+            float.TryParse(col1Node.Element("b").Value.Replace(".", ","), out col1.b);
+            float.TryParse(col1Node.Element("a").Value.Replace(".", ","), out col1.a);
+#endif
+            // normalizing
+            col0.r = Mathf.Clamp(col0.r, 0, 1);
+            col0.g = Mathf.Clamp(col0.g, 0, 1);
+            col0.b = Mathf.Clamp(col0.b, 0, 1);
+            col0.a = Mathf.Clamp(col0.a, 0, 1);
+            col1.r = Mathf.Clamp(col1.r, 0, 1);
+            col1.g = Mathf.Clamp(col1.g, 0, 1);
+            col1.b = Mathf.Clamp(col1.b, 0, 1);
+            col1.a = Mathf.Clamp(col1.a, 0, 1);
+            //other parameters
+            float ampl, wVel, wNb, trans, amb, dif, spec; //wave amplitude, velocity, number, transition between both colors, ambient, diffuse and specular lighting
+#if WINDOWS_UWP
+            float.TryParse(defNode.Element("amplitude").Value , out ampl);
+            float.TryParse(defNode.Element("waveVel").Value , out wVel);
+            float.TryParse(defNode.Element("waveNb").Value , out wNb);
+            float.TryParse(defNode.Element("transition").Value , out trans);
+            float.TryParse(defNode.Element("ambient").Value , out amb);
+            float.TryParse(defNode.Element("diffuse").Value , out dif);
+            float.TryParse(defNode.Element("specular").Value , out spec);
+#else
+            float.TryParse(defNode.Element("amplitude").Value.Replace(".", ","), out ampl);
+            float.TryParse(defNode.Element("waveVel").Value.Replace(".", ","), out wVel);
+            float.TryParse(defNode.Element("waveNb").Value.Replace(".", ","), out wNb);
+            float.TryParse(defNode.Element("transition").Value.Replace(".", ","), out trans);
+            float.TryParse(defNode.Element("ambient").Value.Replace(".", ","), out amb);
+            float.TryParse(defNode.Element("diffuse").Value.Replace(".", ","), out dif);
+            float.TryParse(defNode.Element("specular").Value.Replace(".", ","), out spec);
+
+#endif
+            defCtrl = new DeformableController(col0, col1, ampl, wVel, wNb, trans, amb, dif, spec);
+        }
+        else
+        {
+            defCtrl = null;
+        }
         HoloObjectDescription currentobj = new HoloObjectDescription
         {
-            //SceneId = node.SelectSingleNode("sceneId").InnerText,
             SceneId = node.Element("sceneId").Value,
             SelfId = sfid,
             Position = pos,
             Rotation = rot,
             Scale = scale,
-            Interactible = interactible
+            Interactible = interactible,
+            DefCtrl = defCtrl
         };
         currentSeance.ActiveObjects.Add(currentobj);
     }
@@ -518,24 +709,23 @@ public class SessionManager : MonoBehaviour
         {
             HoloObject currentObj = CheckSceneIdInActive(desc.SceneId);
             if(currentObj != null)
-            //if (currentObj != null)
             {
                 // object is already there, maybe needs to be modified
-                Debug.Log("Object found. Modification is possible");
+                UnityEngine.Debug.Log("Object found. Modification is possible");
                 currentObj.Obj.transform.position = desc.Position;
                 currentObj.Obj.transform.rotation = desc.Rotation;
                 currentObj.Obj.transform.localScale = desc.Scale;
                 currentObj.Obj.GetComponent<ObjectManager>().interactible = desc.Interactible;
-                currentObj.DealWithOtherParameters(desc.OtherContent);
+                currentObj.DealWithOtherParameters(desc);
             }
             else
             {
                 // new object
-                Debug.Log("Object not found. Creating new object");
+                UnityEngine.Debug.Log("Object not found. Creating new object");
                 activeObjects.Add(new HoloObject(desc, parent));
             }
         }
-        // destuction
+        // destruction
         foreach (HoloObject obj in activeObjects)
         {
             HoloObjectDescription currDesc = CheckSceneIdInDesc(obj.SceneId);
@@ -569,7 +759,7 @@ public class SessionManager : MonoBehaviour
             //DebugLog("current active object : '" + obj.SceneId+ "'");
             if (sceneId.Equals(obj.SceneId))
             {
-                Debug.Log("  // return : " + obj);
+                UnityEngine.Debug.Log("  // return : " + obj);
                 return obj;
             }
             //DebugLog("/" + obj.SceneId + "//" + sceneId + "/");
@@ -636,6 +826,72 @@ public class SessionManager : MonoBehaviour
                 scaleNode.Add(sclYNode);
                 scaleNode.Add(sclZNode);
                 xmlObj.Add(scaleNode);
+
+                //deformation
+                if(hObj.DefCtrl != null)
+                {
+                    DeformableController current = hObj.DefCtrl;
+                    XElement defNode = new XElement("deformable");
+                    XElement col0Node = new XElement("color0");
+                    XElement red0 = new XElement("r");
+                    red0.SetValue(current.color0.r);
+                    col0Node.Add(red0);
+                    XElement green0 = new XElement("g");
+                    green0.SetValue(current.color0.g);
+                    col0Node.Add(green0);
+                    XElement blue0 = new XElement("b");
+                    blue0.SetValue(current.color0.b);
+                    col0Node.Add(blue0);
+                    XElement alpha0 = new XElement("a");
+                    alpha0.SetValue(current.color0.a);
+                    col0Node.Add(alpha0);
+
+                    XElement col1Node = new XElement("color1");
+                    XElement red1 = new XElement("r");
+                    red1.SetValue(current.color0.r);
+                    col0Node.Add(red1);
+                    XElement green1 = new XElement("g");
+                    green1.SetValue(current.color0.g);
+                    col0Node.Add(green1);
+                    XElement blue1 = new XElement("b");
+                    blue1.SetValue(current.color0.b);
+                    col0Node.Add(blue1);
+                    XElement alpha1 = new XElement("a");
+                    alpha1.SetValue(current.color0.a);
+                    col0Node.Add(alpha1);
+
+                    XElement ampNode = new XElement("amplitude");
+                    ampNode.SetValue(current.amplitude);
+
+                    XElement waveVelNode = new XElement("waveVel");
+                    waveVelNode.SetValue(current.waveVelocity);
+
+                    XElement waveNbNode = new XElement("waveNb");
+                    waveNbNode.SetValue(current.waveNumber);
+
+                    XElement transNode = new XElement("transition");
+                    transNode.SetValue(current.transition);
+
+                    XElement ambNode = new XElement("ambient");
+                    ambNode.SetValue(current.ambientLight);
+
+                    XElement difNode = new XElement("diffuse");
+                    difNode.SetValue(current.diffuseLight);
+
+                    XElement specNode = new XElement("specular");
+                    specNode.SetValue(current.specularLight);
+                    defNode.Add(col0Node);
+                    defNode.Add(col1Node);
+                    defNode.Add(ampNode);
+                    defNode.Add(waveVelNode);
+                    defNode.Add(waveNbNode);
+                    defNode.Add(transNode);
+                    defNode.Add(ambNode);
+                    defNode.Add(difNode);
+                    defNode.Add(specNode);
+
+                    xmlObj.Add(defNode);
+                }
                 xmlRoot.Add(xmlObj);
             }
             xmlDoc.Add(xmlRoot);
@@ -650,149 +906,86 @@ public class SessionManager : MonoBehaviour
     }
 
     // creates a Xml document representing the complete scene
-    public XDocument MkSceneXmlFeedback()
-    {
-        if (MainPanel.Instance.sessionPending && currentSeance.SeanceId != null)
-        {
-            XDocument xmlDoc = new XDocument();
-            XElement seanceNode = new XElement("seance");
-            //XmlNode seanceNode = xmlDoc.CreateElement("seance");
-            //XmlAttribute isStartedAttr = xmlDoc.CreateAttribute("isStarted");
-            //isStartedAttr.InnerText = "true";
-            //seanceNode.Attributes.Append(isStartedAttr);
-            //seanceNode.SetAttribute("isStarted", "true");
-            seanceNode.SetAttributeValue("isStarted", "true");
-            //xmlDoc.AppendChild(seanceNode);
-            xmlDoc.Add(seanceNode);
+    //public XDocument MkSceneXmlFeedback()
+    //{
+    //    if (MainPanel.Instance.sessionPending && currentSeance.SeanceId != null)
+    //    {
+    //        XDocument xmlDoc = new XDocument();
+    //        XElement seanceNode = new XElement("seance");
+    //        seanceNode.SetAttributeValue("isStarted", "true");
+    //        xmlDoc.Add(seanceNode);
 
-            //XmlElement idNode = xmlDoc.CreateElement("id");
-            XElement idNode = new XElement("id");
-            //idNode.InnerText = currentSeance.SeanceId;
-            idNode.SetValue(currentSeance.SeanceId);
-            //seanceNode.AppendChild(idNode);
-            seanceNode.Add(idNode);
+    //        XElement idNode = new XElement("id");
+    //        idNode.SetValue(currentSeance.SeanceId);
+    //        seanceNode.Add(idNode);
+            
+    //        XElement lastUpdateNode = new XElement("lastUpdate");
+    //        int updateDate = (int)(DateTime.Now - orig).TotalSeconds;
+    //        lastUpdateNode.SetValue(updateDate.ToString());
+    //        seanceNode.Add(lastUpdateNode);
 
-            //XmlElement lastUpdateNode = xmlDoc.CreateElement("lastUpdate");
-            XElement lastUpdateNode = new XElement("lastUpdate");
-            int updateDate = (int)(DateTime.Now - orig).TotalSeconds;
-            //lastUpdateNode.InnerText = updateDate.ToString();
-            lastUpdateNode.SetValue(updateDate.ToString());
-            //seanceNode.AppendChild(lastUpdateNode);
-            seanceNode.Add(lastUpdateNode);
+    //        XElement sceneNode = new XElement("scene");
+    //        foreach (HoloObjectDescription desc in currentSeance.ActiveObjects)
+    //        {
+    //            XElement node = new XElement("object");
+    //            XElement selfIdNode = new XElement("selfId");
+    //            selfIdNode.SetValue(desc.SelfId.ToString());
+    //            node.Add(selfIdNode);
+    //            XElement sceneIdNode = new XElement("sceneId");
+    //            sceneIdNode.SetValue(desc.SceneId);
+    //            node.Add(sceneIdNode);
+    //            XElement positionNode = new XElement("position");
+    //            XElement posXNode = new XElement("x");
+    //            posXNode.SetValue(desc.Position.x.ToString());
+    //            XElement posYNode = new XElement("y");
+    //            posYNode.SetValue(desc.Position.y.ToString());
+    //            XElement posZNode = new XElement("z");
+    //            posZNode.SetValue(desc.Position.z.ToString());
 
-            //XmlElement sceneNode = xmlDoc.CreateElement("scene");
-            XElement sceneNode = new XElement("scene");
-            foreach (HoloObjectDescription desc in currentSeance.ActiveObjects)
-            {
-                //XmlElement node = xmlDoc.CreateElement("object");
-                XElement node = new XElement("object");
-                // selfId
-                //XmlElement selfIdNode = xmlDoc.CreateElement("selfId");
-                XElement selfIdNode = new XElement("selfId");
-                //selfIdNode.InnerText = desc.SelfId.ToString();
-                selfIdNode.SetValue(desc.SelfId.ToString());
-                //node.AppendChild(selfIdNode);
-                node.Add(selfIdNode);
-                //sceneId
-                //XmlElement sceneIdNode = xmlDoc.CreateElement("sceneId");
-                XElement sceneIdNode = new XElement("sceneId");
-                //sceneIdNode.InnerText = desc.SceneId;
-                sceneIdNode.SetValue(desc.SceneId);
-                //node.AppendChild(sceneIdNode);
-                node.Add(sceneIdNode);
-                // position (Vector3)
-                //XmlElement positionNode = xmlDoc.CreateElement("position");
-                XElement positionNode = new XElement("position");
-                //XmlElement posXNode = xmlDoc.CreateElement("x");
-                XElement posXNode = new XElement("x");
-                //posXNode.InnerText = desc.Position.x.ToString();
-                posXNode.SetValue(desc.Position.x.ToString());
-                //XmlElement posYNode = xmlDoc.CreateElement("y");
-                XElement posYNode = new XElement("y");
-                //posYNode.InnerText = desc.Position.y.ToString();
-                posYNode.SetValue(desc.Position.y.ToString());
-                //XmlElement posZNode = xmlDoc.CreateElement("z");
-                XElement posZNode = new XElement("z");
-                //posZNode.InnerText = desc.Position.z.ToString();
-                posZNode.SetValue(desc.Position.z.ToString());
+    //            positionNode.Add(posXNode);
+    //            positionNode.Add(posYNode);
+    //            positionNode.Add(posZNode);
+    //            node.Add(positionNode);
+    //            XElement rotationNode = new XElement("rotation");
+    //            XElement rotXNode = new XElement("x");
+    //            rotXNode.SetValue(desc.Rotation.x.ToString());
+    //            XElement rotYNode = new XElement("y");
+    //            rotYNode.SetValue(desc.Rotation.y.ToString());
+    //            XElement rotZNode = new XElement("z");
+    //            rotZNode.SetValue(desc.Rotation.z.ToString());
+    //            XElement rotWNode = new XElement("w");
+    //            rotWNode.SetValue(desc.Rotation.w.ToString());
 
-                //positionNode.AppendChild(posXNode);
-                //positionNode.AppendChild(posYNode);
-                //positionNode.AppendChild(posZNode);
-                positionNode.Add(posXNode);
-                positionNode.Add(posYNode);
-                positionNode.Add(posZNode);
-                //node.AppendChild(positionNode);
-                node.Add(positionNode);
-                // rotation (Quaternion)
-                //XmlElement rotationNode = xmlDoc.CreateElement("rotation");
-                //XmlElement rotXNode = xmlDoc.CreateElement("x");
-                //rotXNode.InnerText = desc.Rotation.x.ToString();
-                //XmlElement rotYNode = xmlDoc.CreateElement("y");
-                //rotYNode.InnerText = desc.Rotation.y.ToString();
-                //XmlElement rotZNode = xmlDoc.CreateElement("z");
-                //rotZNode.InnerText = desc.Rotation.z.ToString();
-                //XmlElement rotWNode = xmlDoc.CreateElement("w");
-                //rotWNode.InnerText = desc.Rotation.w.ToString();
-                XElement rotationNode = new XElement("rotation");
-                XElement rotXNode = new XElement("x");
-                rotXNode.SetValue(desc.Rotation.x.ToString());
-                XElement rotYNode = new XElement("y");
-                rotYNode.SetValue(desc.Rotation.y.ToString());
-                XElement rotZNode = new XElement("z");
-                rotZNode.SetValue(desc.Rotation.z.ToString());
-                XElement rotWNode = new XElement("w");
-                rotWNode.SetValue(desc.Rotation.w.ToString());
+    //            rotationNode.Add(rotXNode);
+    //            rotationNode.Add(rotYNode);
+    //            rotationNode.Add(rotZNode);
+    //            rotationNode.Add(rotWNode);
+    //            node.Add(rotationNode);
+    //            XElement scaleNode = new XElement("scale");
+    //            XElement sclXNode = new XElement("x");
+    //            sclXNode.SetValue(desc.Scale.x.ToString());
+    //            XElement sclYNode = new XElement("y");
+    //            sclYNode.SetValue(desc.Scale.y.ToString());
+    //            XElement sclZNode = new XElement("z");
+    //            sclZNode.SetValue(desc.Scale.z.ToString());
 
-                //rotationNode.AppendChild(rotXNode);
-                //rotationNode.AppendChild(rotYNode);
-                //rotationNode.AppendChild(rotZNode);
-                //rotationNode.AppendChild(rotWNode);
-                rotationNode.Add(rotXNode);
-                rotationNode.Add(rotYNode);
-                rotationNode.Add(rotZNode);
-                rotationNode.Add(rotWNode);
-                //node.AppendChild(rotationNode);
-                node.Add(rotationNode);
-                // scale (Vector3)
-                //XmlElement scaleNode = xmlDoc.CreateElement("scale");
-                //XmlElement sclXNode = xmlDoc.CreateElement("x");
-                //sclXNode.InnerText = desc.Scale.x.ToString();
-                //XmlElement sclYNode = xmlDoc.CreateElement("y");
-                //sclYNode.InnerText = desc.Scale.y.ToString();
-                //XmlElement sclZNode = xmlDoc.CreateElement("z");
-                //sclZNode.InnerText = desc.Scale.z.ToString();
-                XElement scaleNode = new XElement("scale");
-                XElement sclXNode = new XElement("x");
-                sclXNode.SetValue(desc.Scale.x.ToString());
-                XElement sclYNode = new XElement("y");
-                sclYNode.SetValue(desc.Scale.y.ToString());
-                XElement sclZNode = new XElement("z");
-                sclZNode.SetValue(desc.Scale.z.ToString());
+    //            scaleNode.Add(sclXNode);
+    //            scaleNode.Add(sclYNode);
+    //            scaleNode.Add(sclZNode);
+    //            node.Add(scaleNode);
 
-                //scaleNode.AppendChild(sclXNode);
-                //scaleNode.AppendChild(sclYNode);
-                //scaleNode.AppendChild(sclZNode);
-                //node.AppendChild(scaleNode);
-                scaleNode.Add(sclXNode);
-                scaleNode.Add(sclYNode);
-                scaleNode.Add(sclZNode);
-                node.Add(scaleNode);
+    //            sceneNode.Add(node);
+    //        }
+    //        seanceNode.Add(sceneNode);
+    //        return xmlDoc;
+    //    }
+    //    else
+    //    {
+    //        Debug.Log("Can't serialize scene objects since sessionPending == false");
+    //        return null;
+    //    }
 
-                //sceneNode.AppendChild(node);
-                sceneNode.Add(node);
-            }
-            //seanceNode.AppendChild(sceneNode);
-            seanceNode.Add(sceneNode);
-            return xmlDoc;
-        }
-        else
-        {
-            Debug.Log("Can't serialize scene objects since sessionPending == false");
-            return null;
-        }
-
-    }
+    //}
 
     // to be called everytime the patient moves objects to preserve coherence between HoloObject list and HoloObjectDescription listand returns the list of the changed Objects
     public void OnObjectChange()
@@ -814,33 +1007,111 @@ public class SessionManager : MonoBehaviour
                 }
                 else
                 {
-                    Debug.Log("Incoherence between HoloObjectDescription list and HoloObject list activeObjects.");
+                    UnityEngine.Debug.Log("Incoherence between HoloObjectDescription list and HoloObject list activeObjects.");
                 }
             }
 
         }
     }
 
-    //public Vector3 PositionFromString(string pos)
-    //{
-    //    // pos :"##.##/##.##/##.##" (x/y/z)
-    //    Debug.Log(pos);
-    //    string[] posData = pos.Split('/');
-    //    float[] xyz = new float[3];
-    //    for (int i = 0; i < 3; i++)
-    //    {
-    //        if (!float.TryParse(posData[i], out xyz[i]))
-    //        {
-    //            Debug.Log("Can't parse position " + i + " : " + posData[i] + " / Position set to 0");
-    //            xyz[i] = 0;
-    //        }
-    //    }
-    //    return new Vector3(xyz[0], xyz[1], xyz[2]);
-    //}
+    IEnumerator BlackScreen(bool opaque, float aTime)
+    {
+        Texture2D texture = new Texture2D(1, 1);
+        Color[] colors = new Color[1];
+        float alpha;
+        for (float t = 0.0f; t < 1.0f; t += Time.deltaTime / aTime)
+        {
+            if (opaque)
+            {
+                // fadeIn
+                alpha = 1.0f - t;
+            }
+            else
+            {
+                //fadeOut
+                alpha = t;
+            }
+            colors[0] = new Color(0, 0, 0, alpha);
+            texture.SetPixels(colors);
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), texture);
+            yield return null;
+        }
+    }
 
-    //public Quaternion RotationFromString(string rot)
-    //{
-    //    return Quaternion.Euler(PositionFromString(rot));
-    //}
 
+    public bool SceneSwicth(XDocument seanceXml)
+    {
+        UnityEngine.Debug.Log("sceneSwitch");
+        bool previousIsSafePlace = MainPanel.Instance.isSafePlace;
+        try
+        {
+            bool.TryParse(seanceXml.Descendants("mode").First<XElement>().Value, out MainPanel.Instance.isSafePlace);
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.Log("no mode node found: " + e);
+        }
+
+        if (MainPanel.Instance.isSafePlace)
+        {
+            if (previousIsSafePlace != MainPanel.Instance.isSafePlace)
+            {
+                // vider la liste des hologrammes et charger la scène
+                Stopwatch elapsedSec = new Stopwatch();
+                long timeOut = 3000L; // 3 sec 
+                elapsedSec.Start();
+                //StartCoroutine(BlackScreen(true, 1.0f));
+                string sceneName = "holoSafePlace"; // to be changed if several safe places
+                StartCoroutine(LoadAsyncScene(sceneName));
+                Singleton<GestureManager>.Instance.Transition(Singleton<GestureManager>.Instance.NavigationRecognizer);
+                foreach (HoloObject obj in activeObjects)
+                {
+                    Destroy(obj.Obj);
+                }
+                currentSeance.ActiveObjects = new List<HoloObjectDescription>();
+                activeObjects = new List<HoloObject>();
+                elapsedSec.Stop();
+                //StartCoroutine(BlackScreen(false, 1.0f));
+            }
+            return true;
+        }
+
+        // hologram mode
+        if (previousIsSafePlace != MainPanel.Instance.isSafePlace)
+        {
+            // unload scene and reload original scene
+            Stopwatch elapsedSec = new Stopwatch();
+            long timeOut = 3000L; // 3 sec 
+            elapsedSec.Start();
+            //StartCoroutine(BlackScreen(true, 1.0f));
+            string sceneName = "holoLensScene"; // to be changed if several safe places
+            StartCoroutine(LoadAsyncScene(sceneName));
+            Singleton<GestureManager>.Instance.Transition(Singleton<GestureManager>.Instance.NavigationRecognizer);
+            //StartCoroutine(BlackScreen(false, 1.0f));
+        }
+        return false;
+    }
+
+    IEnumerator LoadAsyncScene(string sceneName)
+    {
+        AsyncOperation loading = SceneManager.LoadSceneAsync(sceneName);
+        loading.allowSceneActivation = false;
+        //while (loading.progress <= 0.89f)
+        //{
+        //    UnityEngine.Debug.Log("Loading : " + loading.progress * 100 + "%");
+        //    yield return null;
+        //}
+        while (!loading.isDone)
+        {
+            UnityEngine.Debug.Log("Loading : " + loading.progress * 100 + "%");
+            if (loading.progress == 0.9f)
+            {
+                UnityEngine.Debug.Log("scene activation");
+                loading.allowSceneActivation = true;
+            }
+            yield return null;
+        }
+        UnityEngine.Debug.Log("Done");
+        yield return null;
+    }
 }

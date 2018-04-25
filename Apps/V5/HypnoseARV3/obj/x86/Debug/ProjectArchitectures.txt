@@ -1,0 +1,4 @@
+C:\Users\Romain\Documents\Unity\HypnoseARV3\Apps\V5\GeneratedProjects\UWP\Assembly-CSharp\Assembly-CSharp.csproj;x86
+C:\Users\Romain\Documents\Unity\HypnoseARV3\Apps\V5\GeneratedProjects\UWP\Assembly-CSharp-firstpass\Assembly-CSharp-firstpass.csproj;x86
+C:\Users\Romain\Documents\Unity\HypnoseARV3\Apps\V5\GeneratedProjects\UWP\Assembly-CSharp-firstpass\Assembly-CSharp-firstpass.csproj;x86
+C:\Users\Romain\Documents\Unity\HypnoseARV3\Apps\V5\HypnoseARV3\HypnoseARV3.csproj;x86

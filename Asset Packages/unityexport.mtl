@@ -1,0 +1,18 @@
+newmtl Bark
+Kd 1 1 1
+map_Kd null
+illum 2
+
+newmtl Leaves
+Kd 1 1 1
+map_Kd null
+illum 2
+
+newmtl Default-Material
+Kd 1 1 1
+illum 2
+
+newmtl LowPolyWater
+map_Bump C:\Users\Romain\Documents\Unity\HypnoseARV3\Asset Packages\SmallWaves.png
+illum 2
+

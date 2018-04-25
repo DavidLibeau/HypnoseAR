@@ -8,3 +8,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/holoLensScene.unity
     guid: 04db07ba38104ff4ebf84e3b0969dd42
+  - enabled: 0
+    path: Assets/holoSafePlaceOLD.unity
+    guid: 7f9220654fe8dba41826f9c484f48f18
+  - enabled: 1
+    path: Assets/holoSafePlace.unity
+    guid: 06e4f18dd407c424bab0812095901336

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: edad3612ca474b54fad99b5ad8a8e244
+timeCreated: 1486318263
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - Player: {instanceID: 0}
+  - ProceduralTerrain: {fileID: 1666612089462072, guid: bb954169a05844a4eba3be86b3c12272,
+      type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

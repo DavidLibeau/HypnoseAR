@@ -1,0 +1,7 @@
+sceneSetups:
+- path: Assets/holoLensScene.unity
+  isLoaded: 1
+  isActive: 0
+- path: Assets/holoSafePlace.unity
+  isLoaded: 1
+  isActive: 1

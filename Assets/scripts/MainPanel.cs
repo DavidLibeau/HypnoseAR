@@ -9,6 +9,9 @@ using UnityEngine.Windows;
 using System.Xml;
 using System.IO;
 using System.Xml.Linq;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Threading;
 
 //#if WINDOWS_UWP
 //using Windows.Storage;
@@ -30,30 +33,32 @@ public class MainPanel : MonoBehaviour {
     public DateTime lastUpdate = DateTime.Now; // to be changed
     public String nextPatient = "Marcel Dupont"; // to be changed
 
-    private String getContent = ""; // contains the text output from the GET operations
     private String prevGetContent = ""; // contains the output from the previous GET operations (to compare with current)
     private String putContent = ""; // contains the text output representing the status of the scene to be send to the server
     private String prevPutContent = ""; // contains the text output representing the previous status of the scene sent to the server
     private String url = "dav.li/HypnoseAR/";
-    private bool putPending = false;
 
     private float nextGetCall;
     public float refreshingFreq = 5f;
     public bool sessionPending;
+    public bool downloadPending;
+    public bool isSafePlace;
     public static MainPanel Instance;
 
     // test
     public Text modeTest;
     public Text recievedTest;
+    public bool noServerTest;
+    //string testString = "<?xml version=\"1.0\"?><seance isStarted=\"true\"><id>XX1SI</id><mode>true</mode><date_create>1521033192</date_create><scene><object><selfId>1</selfId><sceneId>58</sceneId><position><x>-0.51</x><y>1.31</y><z>1</z></position></object></scene></seance>";
 
-////#if WINDOWS_UWP
-//    Windows.Storage.ApplicationDataContainer localSettings = Windows.Storage.ApplicationData.Current.LocalSettings; //for saving log info
-//    Windows.Storage.StorageFolder localFolder = Windows.Storage.ApplicationData.Current.LocalFolder;
-////#endif
+    ////#if WINDOWS_UWP
+    //    Windows.Storage.ApplicationDataContainer localSettings = Windows.Storage.ApplicationData.Current.LocalSettings; //for saving log info
+    //    Windows.Storage.StorageFolder localFolder = Windows.Storage.ApplicationData.Current.LocalFolder;
+    ////#endif
 
     //string path = "info.txt"; // pb là
     //string path = "C:/Users/Romain/Documents/Unity/HypnoseARV3/Assets/test.txt";
-    string sessionId;
+    public string sessionId;
 
     public string Url
     {
@@ -68,61 +73,80 @@ public class MainPanel : MonoBehaviour {
         }
     }
     // URL : dav.li/HypnoseAR/test.php
-    // id for the test seance: XX1SI
-    public string testSeanceId = "XX1SI";
+    void Awake()
+    {
+        DontDestroyOnLoad(this.gameObject);
+        DontDestroyOnLoad(GameObject.Find("White Pointer"));
+    }
+
+
     // Use this for initialization
     void Start () {
-        RequestInfo();
         sessionPending = false;
-        getContent = "";
+        downloadPending = false;
         nextGetCall = Time.time;
         Instance = this;
-
+        sessionId = ""; // to be changed MI5F6
+        noServerTest = false;
+        isSafePlace = false;
 	}
-	//***** ENSURE THAT THERE IS NO COLLISION BETWEEN RECIEVED CONTENTS AND UPDATED CONTENTS DUE TO PATIENT*****//
 	// Update is called once per frame
 	void Update () {
         // ask for starting message
         if (!sessionPending)
         {
-            sessionPointer.SetActive(false);
-            modeTest.text = "UI mode";
+            if(sessionPointer != null)
+            {
+                sessionPointer.SetActive(false);
+            }
+            if(modeTest != null)
+            {
+                modeTest.text = "UI mode";
+            }
+
         }
         else
         {
-            modeTest.text = "Session running";
-            sessionPointer.SetActive(true);
+            if(modeTest != null)
+            {
+                modeTest.text = "Session running";
+            }
+            if (sessionPointer != null)
+            {
+                sessionPointer.SetActive(true);
+            }
         }
         // every x seconds make a get and send scene status:
-        if (Time.time > nextGetCall)
+        if (Time.time > nextGetCall && !sessionId.Equals(""))
         {
             nextGetCall += refreshingFreq;
-            prevGetContent = getContent;
             prevPutContent = putContent;
-
-            string parameters = "id=" + testSeanceId + ""; // replace by by sessionId
-            //StartCoroutine(GetHTTPRequest("getSeance", parameters, ParseXMLandReply)); // replace by get or whatever -> get updates from server
-          
-          // test
-          //StartCoroutine(GetHTTPRequest("test", ParseXMLandReply)); // replace by get or whatever -> get updates from server
-          getContent = "<?xml version=\"1.0\"?><seance isStarted=\"true\"><id>XX1SI</id><date_create>1521033192</date_create><scene><object><selfId>1</selfId><sceneId>o46</sceneId></object><object><selfId>1</selfId><sceneId>o24</sceneId></object></scene></seance>";
-          ParseXMLandReply();
+            string parameters = "id=" + sessionId + ""; // replace by by sessionId
+            StartCoroutine(GetHTTPRequest("getSeance", parameters, ParseXMLandReply)); // replace by get or whatever -> get updates from server
+            //UnityEngine.Debug.Log(testString);
+           // ParseXMLandReply(testString);
         }
     }
 
-    public void ParseXMLandReply()
+    public void ParseXMLandReply(string content)
     {
-        recievedTest.text = getContent;
-        // ParseXML, porcess the info on the scene via the SessionManager
-        if (!prevGetContent.Equals(getContent))
+        recievedTest.text = content;
+        if (content.Equals("Error:404"))
         {
-            SessionManager.Instance.ParseXML(getContent);
+            Debug.Log(content);
+            return;
+        }
+        // ParseXML, porcess the info on the scene via the SessionManager
+        if (!prevGetContent.Equals(content))
+        {
+            SessionManager.Instance.ParseXML(content);
             //Debug.Log(getContent);
         }
         else
         {
             Debug.Log("same content");
         }
+        prevGetContent = content;
 
         // Reply with the new status of the status in case the patient moved something
         //Send objects status to server
@@ -140,12 +164,12 @@ public class MainPanel : MonoBehaviour {
 
                 if (!prevPutContent.Equals(putContent))
                 {
-                    Debug.Log("Latest feedback : " + putContent);
+                    //Debug.Log("Latest feedback : " + putContent);
                     StartCoroutine(PutHTTPRequest("putTest", putContent));
                 }
                 else
                 {
-                    Debug.Log("same feedback content");
+                    //Debug.Log("same feedback content");
                 }
             }
             else
@@ -155,77 +179,130 @@ public class MainPanel : MonoBehaviour {
         }
     }
 
-    public void UpdateLib()
+    public void UpdateLibCall()
     {
-        // to be completed
-        //callback : update info
+        if (!downloadPending && !sessionPending)
+        {
+            string function = "";
+            string parameters = "db/3d/downloadList.xml";
+            StartCoroutine(GetHTTPRequest(function, parameters, DownloadFiles));
+        }
+        else
+        {
+            Debug.Log("Download or session pending");
+        }
+        LibraryManager.Instance.PutUpdateLibInfo();
+        UpdateLibInfo();
+    }
+
+    public void DownloadFiles(string instructionFile)
+    {
+        Debug.Log("DownloadFiles received content : " + instructionFile);
+        string parameters = "";
+        string _byteOrderMarkUtf8 = Encoding.UTF8.GetString(Encoding.UTF8.GetPreamble());
+        if (instructionFile.StartsWith(_byteOrderMarkUtf8))
+        {
+            instructionFile = instructionFile.Remove(0, _byteOrderMarkUtf8.Length);
+        }
+        XDocument instructionXml = XDocument.Parse(instructionFile);
+        XElement rootNode = instructionXml.Descendants("downloadList").First<XElement>();
+        IEnumerable<XElement> objList = rootNode.Elements("object");
+        foreach(XElement objItem in objList)
+        {
+            string selfId = "", meshPath = "", texPath = "";
+            XElement selfIdNode = objItem.Element("id");
+            if (selfIdNode != null)
+            {
+                selfId = selfIdNode.Value;
+
+            }
+            XElement meshNode = objItem.Element("mesh");
+            if(meshNode != null)
+            {
+                meshPath = meshNode.Value;
+            }
+            XElement texNode = objItem.Element("texture");
+            if (texNode != null)
+            {
+                texPath = texNode.Value;
+            }
+            
+            if (!selfId.Equals("") && !meshPath.Equals("") && !texPath.Equals(""))
+            {
+                string meshName = meshPath.Split('/').Last();
+                string texName = texPath.Split('/').Last();
+                StartCoroutine(LibraryManager.Instance.DownloadLibFile(parameters+ meshPath, meshName));
+                StartCoroutine(LibraryManager.Instance.DownloadLibFile(parameters+texPath, texName));
+                XElement infoRootNode = new XElement("root",selfIdNode,meshNode,texNode);
+                XDocument infoFileXml = new XDocument();
+                infoFileXml.Add(infoRootNode);
+                byte[] data = Encoding.ASCII.GetBytes(infoFileXml.ToString());
+                LibraryManager.Instance.WriteData(data, selfId + ".xml");
+            }
+
+        }
+        
     }
 
     public void NewSession()
     {
-        StartCoroutine(GetHTTPRequest("test", UpdateSessionId)); // to be removed
-      //  StartCoroutine(GetHTTPRequest("newSeance", UpdateSessionId));
+        if (!downloadPending)
+        {
+            StartCoroutine(GetHTTPRequest("newSeance","", UpdateSessionId));
+        }
+        else
+        {
+            Debug.Log("Download pending");
+        }
+
     }
 
-    public void UpdateSessionId()
+    public void UpdateSessionId(string content)
     {
-        sessionId = getContent;
+        sessionId = content;
         Debug.Log("sessionId : " + sessionId);
         sessionIdText.text = "Identifiant de session : " + sessionId;
     }
 
-    IEnumerator GetHTTPRequest(string function, string parameters, Action Callback)
+    IEnumerator GetHTTPRequest(string function, string parameters, Action<string> Callback)
     {
-        string completeUrl;
-        if (parameters == "")
+        if (!noServerTest)
         {
-            completeUrl = Url + function + ".php";
+            string completeUrl = Url;
+            if(function.Equals(""))
+            {
+                completeUrl += parameters;
+            }
+            if (parameters.Equals("") && !function.Equals(""))
+            {
+                completeUrl += function + ".php";
+            }
+            if(!parameters.Equals("") && !function.Equals(""))
+            {
+                completeUrl += function + ".php?" + parameters;
+            }
+            Debug.Log(completeUrl);
+            UnityWebRequest request = UnityWebRequest.Get(completeUrl);
+            yield return request.SendWebRequest();
+
+            if(request.responseCode != 200) //request.isNetworkError || request.isHttpError)
+            {
+                Debug.Log(request.error);
+                yield break;
+            }
+            else
+            {
+                //Debug.Log("Message : "+ getContent);
+            }
+            if (Callback != null)
+            {
+                //Debug.Log("Callback");
+                Callback(request.downloadHandler.text);   
+            }
         }
         else
         {
-            completeUrl = Url + function + ".php?" + parameters;
-        }
-        Debug.Log(completeUrl);
-        UnityWebRequest request = UnityWebRequest.Get(completeUrl);
-        yield return request.SendWebRequest();
-
-        if(request.responseCode != 200) //request.isNetworkError || request.isHttpError)
-        {
-            Debug.Log(request.error);
-            yield break;
-        }
-        else
-        {
-            getContent = request.downloadHandler.text;
-           //Debug.Log("Message : "+ getContent);
-        }
-        if (Callback != null)
-        {
-            //Debug.Log("Callback");
-            Callback();
-        }
-    }
-
-    IEnumerator GetHTTPRequest(string function, Action callback)
-    {
-        string completeUrl = Url + function + ".php";
-        Debug.Log(completeUrl);
-        UnityWebRequest request = UnityWebRequest.Get(completeUrl);
-        yield return request.SendWebRequest();
-
-        if (request.responseCode != 200) // request.isNetworkError || request.isHttpError)
-        {
-            Debug.Log(request.error);
-        }
-        else
-        {
-            getContent = request.downloadHandler.text;
-            Debug.Log("Message : " + getContent);
-        }
-        if (callback != null)
-        {
-            //Debug.Log("Callback");
-            callback();
+            //Callback(testString);
         }
     }
 
@@ -242,7 +319,7 @@ public class MainPanel : MonoBehaviour {
         }
         else
         {
-            Debug.Log("Upload complete!");
+           // Debug.Log("Upload complete!");
         }
        // ConfirmPut();
     }
@@ -285,34 +362,15 @@ public class MainPanel : MonoBehaviour {
         }
     }
 
-    public void RequestInfo()
+    public void DisplayToConsole(string content)
     {
-        StartCoroutine(GetHTTPRequest("test", DisplayInfo)); // to be changed to logInfo        
+        Debug.Log("getContent :" + content);
     }
 
-    public void DisplayToConsole()
+    public void UpdateLibInfo()
     {
-        Debug.Log("getContent :" + getContent);
-    }
-
-    public void DisplayInfo()
-    {
-        string[] dataArray = getContent.Split('|');
-        if (dataArray.Length == 7)
-        {
-            info.text = "Dernière mise à jour : " + dataArray[0] + "/" + dataArray[1] + "/" + dataArray[2] + " à " + dataArray[3] + ":" + dataArray[4] + ":" + dataArray[5] + "\n Prochain patient : " + dataArray[6];
-        }
-        else
-        {
-            info.text = getContent;
-            Debug.Log("There is something wrong with the log file or the GET content: " + getContent);
-        }
-    }
-
-    private void UpdateLogInfo()
-    {
-        string newInfo = TimeToString(lastUpdate.Day) + "|" + TimeToString(lastUpdate.Month) + "|" + TimeToString(lastUpdate.Year) + "|" + TimeToString(lastUpdate.Hour) + "|" + TimeToString(lastUpdate.Minute) + "|" + TimeToString(lastUpdate.Second) + "|" + nextPatient; // to be changed
-        StartCoroutine(PutHTTPRequest("test", newInfo)); // to be changed to logInfo
+        DateTime lastUpdate = LibraryManager.Instance.GetUpdateLibInfo();
+        info.text = "Dernière mise à jour : " + TimeToString(lastUpdate.Day) + "/" + TimeToString(lastUpdate.Month) + "/" + TimeToString(lastUpdate.Year) + " à " + TimeToString(lastUpdate.Hour) + ":" + TimeToString(lastUpdate.Minute) + ":" + TimeToString(lastUpdate.Second); 
     }
 
     private static string TimeToString(int num)
